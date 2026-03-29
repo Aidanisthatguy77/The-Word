@@ -1,33 +1,65 @@
 # The Word
 
-The Word is a complete Bible study web platform (mobile-first + desktop friendly) built as a static app.
+The Word now includes a static front-end **plus** a production-style backend API for persistent data, local AI inference, full historical GBT ingestion, and real clip rendering.
 
-## Features
+## What you now have
 
-- Complete KJV Bible navigation (all 66 books + chapter selector)
-- Verse/chapter/topic search with instant load
-- Verse highlighting + one-click copy
-- Daily Scripture with rotating topic, context, and practical application
-- AI Scripture Guide (free local mode, no paid API) with GBT video recommendations
-- Church Classes section connected to `https://www.youtube.com/@GBT` feed, topic tabs, embedded playback, and search
-- Clip Studio to generate on-demand topic clip suggestions + full-video links from GBT content
-- Scripture Notepad with tags, topic, date, and instant search
-- Study Plans with progress tracking + streak counter
-- Prayer Journal with answered prayer history
-- Dark mode + light mode
+- Full Bible study front-end (Bible, Daily Scripture, AI Guide, Church/GBT, Notes, Study Plans, Prayer)
+- Real backend database (SQLite) for notes, prayers, imported videos, and rendered clips
+- Local model inference endpoint using your own model weights via Hugging Face Transformers
+- Full-history GBT import pipeline using `yt-dlp` (channel videos index + per-video metadata)
+- True clip rendering/export pipeline using `yt-dlp` + `ffmpeg`
 
-## Run locally
+## Project structure
 
-No build step needed.
+- `index.html`, `styles.css`, `app.js`: front-end app
+- `backend/app.py`: FastAPI backend API
+- `backend/requirements.txt`: backend dependencies
+- `backend/the_word.db`: SQLite database (created at runtime)
+- `backend/media/`: downloaded video and rendered clip outputs
+
+## Run frontend
 
 ```bash
 python3 -m http.server 4173
 ```
 
-Then open `http://localhost:4173`.
+Open: `http://localhost:4173`
+
+## Run backend
+
+1) Install requirements:
+
+```bash
+python3 -m pip install -r backend/requirements.txt
+```
+
+2) Ensure system tools exist:
+
+- `yt-dlp`
+- `ffmpeg`
+
+3) Start API:
+
+```bash
+uvicorn backend.app:app --reload --host 0.0.0.0 --port 8000
+```
+
+## Key API endpoints
+
+- `GET /api/health`
+- `POST /api/ai/chat` (true local-model inference)
+- `POST /api/gbt/import` (full historical import from @GBT)
+- `GET /api/gbt/videos`
+- `POST /api/clips/render` (renders and exports an mp4 clip)
+- `GET /api/clips`
+- `GET/POST /api/notes`
+- `GET/POST /api/prayers`
+- `POST /api/prayers/{id}/answer`
 
 ## Notes
 
-- Bible passages are fetched from `bible-api.com` using KJV translation.
-- GBT videos are fetched through the public YouTube RSS feed for the `@GBT` channel via `rss2json`.
-- Notes, highlights, journal entries, clip collections, and plan progress are saved in browser `localStorage`.
+- Model path is configurable via `THE_WORD_MODEL_PATH` (default: `distilgpt2`).
+- Database path is configurable via `THE_WORD_DB`.
+- Media output folder is configurable via `THE_WORD_MEDIA_DIR`.
+- GBT channel source is configurable via `GBT_CHANNEL_URL` (default: `https://www.youtube.com/@GBT`).
