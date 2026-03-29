@@ -34,12 +34,12 @@ const storage = {
 
 const state = {
   highlighted: storage.get("highlighted", {}),
-  notes: storage.get("notes", []),
-  prayers: storage.get("prayers", []),
+  notes: [],
+  prayers: [],
   planProgress: storage.get("planProgress", {}),
-  churchVideos: storage.get("churchVideos", []),
+  churchVideos: [],
   clipCollections: storage.get("clipCollections", []),
-  savedHistory: storage.get("savedHistory", []),
+  savedHistory: [],
   adminAuthed: storage.get("adminAuthed", false),
 };
 
@@ -55,11 +55,13 @@ async function api(path, options = {}) {
 
 function pushSavedItem(item) {
   const record = { ...item, created_at: new Date().toLocaleString() };
-  state.savedHistory.unshift(record);
-  state.savedHistory = state.savedHistory.slice(0, 500);
-  storage.set("savedHistory", state.savedHistory);
-  api("/api/saved", { method: "POST", body: JSON.stringify(record) }).catch(() => {});
-  buildHistory();
+  api("/api/saved", { method: "POST", body: JSON.stringify(record) })
+    .then((saved) => {
+      state.savedHistory.unshift(saved);
+      state.savedHistory = state.savedHistory.slice(0, 500);
+      buildHistory();
+    })
+    .catch(() => {});
 }
 
 function initTabs() {
@@ -186,7 +188,6 @@ function buildChurch() {
     try {
       await api("/api/gbt/import", { method: "POST" });
       state.churchVideos = await api("/api/gbt/videos");
-      storage.set("churchVideos", state.churchVideos);
       renderVideos(document.getElementById("videoSearch").value);
     } catch {
       renderVideos("");
@@ -221,14 +222,18 @@ function buildNotes() {
   const render = (q = "") => {
     const list = document.getElementById("notesList");
     const notes = state.notes.filter((n) => JSON.stringify(n).toLowerCase().includes(q.toLowerCase()));
-    list.innerHTML = notes.map((n, i) => `<article class="card"><strong>${n.topic}</strong><p>${n.body}</p><div class="row"><button class="btn secondary" data-save-note="${i}">Save to History</button><button class="btn secondary" data-del="${i}">Delete</button></div></article>`).join("") || `<p class="muted">No notes.</p>`;
+    list.innerHTML = notes.map((n) => `<article class="card"><strong>${n.topic}</strong><p>${n.body}</p><div class="row"><button class="btn secondary" data-save-note="${n.id || ''}">Save to History</button><button class="btn secondary" data-del="${n.id || ''}">Delete</button></div></article>`).join("") || `<p class="muted">No notes.</p>`;
     list.querySelectorAll("button[data-del]").forEach((b) => b.addEventListener("click", () => {
-      state.notes.splice(Number(b.dataset.del), 1);
-      storage.set("notes", state.notes);
-      render(q);
+      const id = Number(b.dataset.del);
+      api(`/api/notes/${id}`, { method: "DELETE" })
+        .then(() => {
+          state.notes = state.notes.filter((x) => x.id !== id);
+          render(q);
+        })
+        .catch(() => {});
     }));
     list.querySelectorAll("button[data-save-note]").forEach((b) => b.addEventListener("click", () => {
-      const n = notes[Number(b.dataset.saveNote)];
+      const n = notes.find((x) => Number(x.id) === Number(b.dataset.saveNote)) || notes[0];
       pushSavedItem({ type: "note", title: n.topic, content: n.body });
     }));
   };
@@ -241,11 +246,13 @@ function buildNotes() {
       body: document.getElementById("noteBody").value,
       date: new Date().toLocaleString(),
     };
-    state.notes.unshift(note);
-    storage.set("notes", state.notes);
-    pushSavedItem({ type: "note", title: note.topic, content: note.body });
-    api("/api/notes", { method: "POST", body: JSON.stringify(note) }).catch(() => {});
-    render();
+    api("/api/notes", { method: "POST", body: JSON.stringify(note) })
+      .then((saved) => {
+        state.notes.unshift(saved);
+        pushSavedItem({ type: "note", title: saved.topic, content: saved.body });
+        render();
+      })
+      .catch(() => {});
   });
   document.getElementById("searchNotes").addEventListener("input", (e) => render(e.target.value));
   render();
@@ -278,26 +285,35 @@ function buildPrayer() {
   el.innerHTML = `<div class="card"><h2>Prayer Journal</h2><textarea id="prayerText" placeholder="Type prayer"></textarea><div class="row" style="margin-top:.7rem"><button id="savePrayer" class="btn">Save Prayer</button></div></div><div id="prayerList" class="card"></div>`;
   const render = () => {
     const list = document.getElementById("prayerList");
-    list.innerHTML = state.prayers.map((p, i) => `<article class="card"><p>${p.text}</p><p class="muted">${p.date}</p><div class="row"><button class="btn secondary" data-answer="${i}">${p.answered ? "Answered ✅" : "Mark Answered"}</button><button class="btn secondary" data-save-prayer="${i}">Save to History</button></div></article>`).join("") || `<p class="muted">No prayers yet.</p>`;
+    list.innerHTML = state.prayers.map((p) => `<article class="card"><p>${p.text}</p><p class="muted">${p.created_at || p.date}</p><div class="row"><button class="btn secondary" data-answer="${p.id || ''}">${p.answered ? "Answered ✅" : "Mark Answered"}</button><button class="btn secondary" data-save-prayer="${p.id || ''}">Save to History</button><button class="btn secondary" data-del-prayer="${p.id || ''}">Delete</button></div></article>`).join("") || `<p class="muted">No prayers yet.</p>`;
     list.querySelectorAll("button[data-answer]").forEach((b) => b.addEventListener("click", () => {
-      state.prayers[Number(b.dataset.answer)].answered = true;
-      storage.set("prayers", state.prayers);
-      render();
+      const id = Number(b.dataset.answer);
+      api(`/api/prayers/${id}/answer`, { method: "POST" }).then((updated) => {
+        state.prayers = state.prayers.map((x) => (x.id === updated.id ? updated : x));
+        render();
+      }).catch(() => {});
     }));
     list.querySelectorAll("button[data-save-prayer]").forEach((b) => b.addEventListener("click", () => {
-      const p = state.prayers[Number(b.dataset.savePrayer)];
+      const p = state.prayers.find((x) => Number(x.id) === Number(b.dataset.savePrayer)) || state.prayers[0];
       pushSavedItem({ type: "prayer", title: "Prayer Entry", content: p.text });
+    }));
+    list.querySelectorAll("button[data-del-prayer]").forEach((b) => b.addEventListener("click", () => {
+      const id = Number(b.dataset.delPrayer);
+      api(`/api/prayers/${id}`, { method: "DELETE" }).then(() => {
+        state.prayers = state.prayers.filter((x) => x.id !== id);
+        render();
+      }).catch(() => {});
     }));
   };
   document.getElementById("savePrayer").addEventListener("click", () => {
     const text = document.getElementById("prayerText").value.trim();
     if (!text) return;
     const prayer = { text, date: new Date().toLocaleString(), answered: false };
-    state.prayers.unshift(prayer);
-    storage.set("prayers", state.prayers);
-    pushSavedItem({ type: "prayer", title: "Prayer Entry", content: text });
-    api("/api/prayers", { method: "POST", body: JSON.stringify({ text }) }).catch(() => {});
-    render();
+    api("/api/prayers", { method: "POST", body: JSON.stringify({ text }) }).then((saved) => {
+      state.prayers.unshift(saved);
+      pushSavedItem({ type: "prayer", title: "Prayer Entry", content: saved.text });
+      render();
+    }).catch(() => {});
   });
   render();
 }
@@ -308,9 +324,16 @@ function buildHistory() {
   const render = (q = "") => {
     document.getElementById("historyList").innerHTML = state.savedHistory
       .filter((x) => JSON.stringify(x).toLowerCase().includes(q.toLowerCase()))
-      .map((x, i) => `<article class="card"><strong>${x.type.toUpperCase()} • ${x.title}</strong><p>${x.content || ""}</p><p class="muted">${x.created_at}</p><button class="btn secondary" data-copy="${i}">Copy</button></article>`)
+      .map((x, i) => `<article class="card"><strong>${x.type.toUpperCase()} • ${x.title}</strong><p>${x.content || ""}</p><p class="muted">${x.created_at}</p><button class="btn secondary" data-copy="${i}">Copy</button><button class="btn secondary" data-del="${x.id || ''}">Delete</button></article>`)
       .join("") || `<p class="muted">No saved history yet.</p>`;
     document.querySelectorAll("button[data-copy]").forEach((b) => b.addEventListener("click", () => navigator.clipboard.writeText(state.savedHistory[Number(b.dataset.copy)].content || "")));
+    document.querySelectorAll("button[data-del]").forEach((b) => b.addEventListener("click", () => {
+      const id = Number(b.dataset.del);
+      api(`/api/saved/${id}`, { method: "DELETE" }).then(() => {
+        state.savedHistory = state.savedHistory.filter((x) => x.id !== id);
+        render(q);
+      }).catch(() => {});
+    }));
   };
   document.getElementById("historySearch").addEventListener("input", (e) => render(e.target.value));
   render();
@@ -389,6 +412,12 @@ function initTheme() {
 }
 
 (async function init() {
+  try {
+    state.notes = await api("/api/notes");
+    state.prayers = await api("/api/prayers");
+    state.savedHistory = await api("/api/saved");
+    state.churchVideos = await api("/api/gbt/videos");
+  } catch (_) {}
   initTabs();
   initTheme();
   buildBible();

@@ -11,6 +11,8 @@ from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 import hashlib
 
@@ -27,6 +29,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.mount("/assets", StaticFiles(directory=".", html=False), name="assets")
 
 
 class ChatRequest(BaseModel):
@@ -150,6 +153,21 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.get("/")
+def app_index() -> FileResponse:
+    return FileResponse("index.html")
+
+
+@app.get("/app.js")
+def app_js() -> FileResponse:
+    return FileResponse("app.js")
+
+
+@app.get("/styles.css")
+def app_css() -> FileResponse:
+    return FileResponse("styles.css")
+
+
 @app.get("/api/notes")
 def list_notes() -> list[dict[str, Any]]:
     conn = db()
@@ -182,6 +200,17 @@ def create_note(payload: NoteIn) -> dict[str, Any]:
     return {"id": note_id, **payload.model_dump(), "created_at": now}
 
 
+@app.delete("/api/notes/{note_id}")
+def delete_note(note_id: int) -> dict[str, bool]:
+    conn = db()
+    cur = conn.execute("DELETE FROM notes WHERE id = ?", (note_id,))
+    conn.commit()
+    conn.close()
+    if cur.rowcount == 0:
+        raise HTTPException(status_code=404, detail="Note not found")
+    return {"ok": True}
+
+
 @app.get("/api/prayers")
 def list_prayers() -> list[dict[str, Any]]:
     conn = db()
@@ -202,6 +231,17 @@ def create_prayer(payload: PrayerIn) -> dict[str, Any]:
     prayer_id = cur.lastrowid
     conn.close()
     return {"id": prayer_id, "text": payload.text, "answered": 0, "created_at": now}
+
+
+@app.delete("/api/prayers/{prayer_id}")
+def delete_prayer(prayer_id: int) -> dict[str, bool]:
+    conn = db()
+    cur = conn.execute("DELETE FROM prayers WHERE id = ?", (prayer_id,))
+    conn.commit()
+    conn.close()
+    if cur.rowcount == 0:
+        raise HTTPException(status_code=404, detail="Prayer not found")
+    return {"ok": True}
 
 
 @app.post("/api/prayers/{prayer_id}/answer")
@@ -388,6 +428,17 @@ def create_saved_item(payload: dict[str, Any]) -> dict[str, Any]:
     row = conn.execute("SELECT * FROM saved_items WHERE id = ?", (cur.lastrowid,)).fetchone()
     conn.close()
     return dict(row)
+
+
+@app.delete("/api/saved/{saved_id}")
+def delete_saved_item(saved_id: int) -> dict[str, bool]:
+    conn = db()
+    cur = conn.execute("DELETE FROM saved_items WHERE id = ?", (saved_id,))
+    conn.commit()
+    conn.close()
+    if cur.rowcount == 0:
+        raise HTTPException(status_code=404, detail="Saved item not found")
+    return {"ok": True}
 
 
 @app.post("/api/admin/login")
