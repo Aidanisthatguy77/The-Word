@@ -1,0 +1,17 @@
+[Unit]
+Description=The Word FastAPI App
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/the-word
+Environment=THE_WORD_DB=/opt/the-word/backend/the_word.db
+Environment=THE_WORD_MEDIA_DIR=/opt/the-word/backend/media
+Environment=GBT_CHANNEL_URL=https://www.youtube.com/@GBT
+ExecStart=/opt/the-word/.venv/bin/uvicorn backend.app:app --host 127.0.0.1 --port 8000
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
