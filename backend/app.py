@@ -12,6 +12,7 @@ from typing import Any
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+import hashlib
 
 DB_PATH = Path(os.getenv("THE_WORD_DB", "backend/the_word.db"))
 MODEL_PATH = os.getenv("THE_WORD_MODEL_PATH", "distilgpt2")
@@ -49,6 +50,19 @@ class ClipRequest(BaseModel):
     start_seconds: int
     end_seconds: int
     title: str
+
+
+class AdminLoginRequest(BaseModel):
+    password: str
+
+
+class AdminPasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+class AdminFeaturesRequest(BaseModel):
+    features: dict[str, Any]
 
 
 def db() -> sqlite3.Connection:
@@ -99,7 +113,28 @@ def init_db() -> None:
             file_path TEXT NOT NULL,
             created_at TEXT NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS saved_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            type TEXT NOT NULL,
+            title TEXT NOT NULL,
+            content TEXT,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS admin_settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        );
         """
+    )
+    default_hash = hashlib.sha256("admin123".encode()).hexdigest()
+    conn.execute(
+        "INSERT OR IGNORE INTO admin_settings (key, value) VALUES ('admin_password_hash', ?)",
+        (default_hash,),
+    )
+    conn.execute(
+        "INSERT OR IGNORE INTO admin_settings (key, value) VALUES ('feature_flags', '{}')"
     )
     conn.commit()
     conn.close()
@@ -327,3 +362,76 @@ def list_clips() -> list[dict[str, Any]]:
     rows = conn.execute("SELECT * FROM clips ORDER BY id DESC").fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+@app.get("/api/saved")
+def list_saved_items() -> list[dict[str, Any]]:
+    conn = db()
+    rows = conn.execute("SELECT * FROM saved_items ORDER BY id DESC").fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+@app.post("/api/saved")
+def create_saved_item(payload: dict[str, Any]) -> dict[str, Any]:
+    conn = db()
+    cur = conn.execute(
+        "INSERT INTO saved_items (type, title, content, created_at) VALUES (?, ?, ?, ?)",
+        (
+            str(payload.get("type", "item")),
+            str(payload.get("title", "Saved Item")),
+            str(payload.get("content", "")),
+            str(payload.get("created_at", datetime.utcnow().isoformat())),
+        ),
+    )
+    conn.commit()
+    row = conn.execute("SELECT * FROM saved_items WHERE id = ?", (cur.lastrowid,)).fetchone()
+    conn.close()
+    return dict(row)
+
+
+@app.post("/api/admin/login")
+def admin_login(payload: AdminLoginRequest) -> dict[str, bool]:
+    conn = db()
+    row = conn.execute("SELECT value FROM admin_settings WHERE key = 'admin_password_hash'").fetchone()
+    conn.close()
+    incoming = hashlib.sha256(payload.password.encode()).hexdigest()
+    if not row or row["value"] != incoming:
+        raise HTTPException(status_code=401, detail="Invalid password")
+    return {"ok": True}
+
+
+@app.post("/api/admin/password")
+def update_admin_password(payload: AdminPasswordRequest) -> dict[str, bool]:
+    conn = db()
+    current = conn.execute("SELECT value FROM admin_settings WHERE key = 'admin_password_hash'").fetchone()
+    current_hash = hashlib.sha256(payload.current_password.encode()).hexdigest()
+    if not current or current["value"] != current_hash:
+        conn.close()
+        raise HTTPException(status_code=401, detail="Current password invalid")
+    new_hash = hashlib.sha256(payload.new_password.encode()).hexdigest()
+    conn.execute("UPDATE admin_settings SET value = ? WHERE key = 'admin_password_hash'", (new_hash,))
+    conn.commit()
+    conn.close()
+    return {"ok": True}
+
+
+@app.post("/api/admin/features")
+def update_feature_flags(payload: AdminFeaturesRequest) -> dict[str, Any]:
+    conn = db()
+    conn.execute(
+        "UPDATE admin_settings SET value = ? WHERE key = 'feature_flags'",
+        (json.dumps(payload.features),),
+    )
+    conn.commit()
+    row = conn.execute("SELECT value FROM admin_settings WHERE key = 'feature_flags'").fetchone()
+    conn.close()
+    return {"ok": True, "features": json.loads(row["value"]) if row else {}}
+
+
+@app.get("/api/admin/features")
+def get_feature_flags() -> dict[str, Any]:
+    conn = db()
+    row = conn.execute("SELECT value FROM admin_settings WHERE key = 'feature_flags'").fetchone()
+    conn.close()
+    return {"features": json.loads(row["value"]) if row else {}}

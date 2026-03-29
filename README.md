@@ -1,14 +1,21 @@
 # The Word
 
-The Word now includes a static front-end **plus** a production-style backend API for persistent data, local AI inference, full historical GBT ingestion, and real clip rendering.
+The Word now includes a static front-end **plus** a backend API for persistence, local AI inference, full historical GBT import, true clip rendering, saved history, and admin controls.
 
-## What you now have
+## Included now
 
-- Full Bible study front-end (Bible, Daily Scripture, AI Guide, Church/GBT, Notes, Study Plans, Prayer)
-- Real backend database (SQLite) for notes, prayers, imported videos, and rendered clips
-- Local model inference endpoint using your own model weights via Hugging Face Transformers
-- Full-history GBT import pipeline using `yt-dlp` (channel videos index + per-video metadata)
-- True clip rendering/export pipeline using `yt-dlp` + `ffmpeg`
+- Bible, Daily Scripture, AI Guide, Church/GBT, Notes, Study Plans, Prayer Journal
+- Dedicated **Saved History** tab that stores scripture, AI answers, notes, prayers, plans, videos, and clips
+- **Admin Panel** with:
+  - login
+  - API base URL control
+  - full GBT import trigger
+  - password change
+  - feature flag JSON storage
+- Real server/database (SQLite)
+- Local model inference using your own model weights via Transformers
+- True clip rendering/export with yt-dlp + ffmpeg
+- Full history import pipeline for @GBT using yt-dlp
 
 ## Project structure
 
@@ -16,7 +23,7 @@ The Word now includes a static front-end **plus** a production-style backend API
 - `backend/app.py`: FastAPI backend API
 - `backend/requirements.txt`: backend dependencies
 - `backend/the_word.db`: SQLite database (created at runtime)
-- `backend/media/`: downloaded video and rendered clip outputs
+- `backend/media/`: downloaded videos and rendered clips
 
 ## Run frontend
 
@@ -34,7 +41,7 @@ Open: `http://localhost:4173`
 python3 -m pip install -r backend/requirements.txt
 ```
 
-2) Ensure system tools exist:
+2) Ensure tools are installed:
 
 - `yt-dlp`
 - `ffmpeg`
@@ -45,21 +52,30 @@ python3 -m pip install -r backend/requirements.txt
 uvicorn backend.app:app --reload --host 0.0.0.0 --port 8000
 ```
 
-## Key API endpoints
+## Key endpoints
 
 - `GET /api/health`
-- `POST /api/ai/chat` (true local-model inference)
-- `POST /api/gbt/import` (full historical import from @GBT)
+- `POST /api/ai/chat`
+- `POST /api/gbt/import`
 - `GET /api/gbt/videos`
-- `POST /api/clips/render` (renders and exports an mp4 clip)
+- `POST /api/clips/render`
 - `GET /api/clips`
 - `GET/POST /api/notes`
 - `GET/POST /api/prayers`
 - `POST /api/prayers/{id}/answer`
+- `GET/POST /api/saved`
+- `POST /api/admin/login`
+- `POST /api/admin/password`
+- `GET/POST /api/admin/features`
 
-## Notes
+## Admin defaults
 
-- Model path is configurable via `THE_WORD_MODEL_PATH` (default: `distilgpt2`).
-- Database path is configurable via `THE_WORD_DB`.
-- Media output folder is configurable via `THE_WORD_MEDIA_DIR`.
-- GBT channel source is configurable via `GBT_CHANNEL_URL` (default: `https://www.youtube.com/@GBT`).
+- Default admin password: `admin123`
+- Change it immediately from the Admin tab.
+
+## Environment configuration
+
+- `THE_WORD_MODEL_PATH` (default: `distilgpt2`)
+- `THE_WORD_DB`
+- `THE_WORD_MEDIA_DIR`
+- `GBT_CHANNEL_URL` (default: `https://www.youtube.com/@GBT`)
